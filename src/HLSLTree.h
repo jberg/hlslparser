@@ -5,6 +5,9 @@
 #include "Engine.h"
 
 #include <new>
+#include <map>
+#include <vector>
+#include <string>
 
 namespace M4
 {
@@ -19,6 +22,7 @@ enum HLSLNodeType
     HLSLNodeType_BufferField,
     HLSLNodeType_Function,
     HLSLNodeType_Argument,
+    HLSLNodeType_Macro,
     HLSLNodeType_ExpressionStatement,
     HLSLNodeType_Expression,
     HLSLNodeType_ReturnStatement,
@@ -27,6 +31,7 @@ enum HLSLNodeType
     HLSLNodeType_ContinueStatement,
     HLSLNodeType_IfStatement,
     HLSLNodeType_ForStatement,
+    HLSLNodeType_WhileStatement,
     HLSLNodeType_BlockStatement,
     HLSLNodeType_UnaryExpression,
     HLSLNodeType_BinaryExpression,
@@ -47,6 +52,7 @@ enum HLSLNodeType
     HLSLNodeType_Stage,
 };
 
+    
 enum HLSLBaseType
 {
     HLSLBaseType_Unknown,
@@ -56,20 +62,19 @@ enum HLSLBaseType
     HLSLBaseType_Float2,
     HLSLBaseType_Float3,
     HLSLBaseType_Float4,
+
+    HLSLBaseType_Float2x4,
+    HLSLBaseType_Float2x3,
 	HLSLBaseType_Float2x2,
+
+    HLSLBaseType_Float3x4,
     HLSLBaseType_Float3x3,
+    HLSLBaseType_Float3x2,
+
     HLSLBaseType_Float4x4,
     HLSLBaseType_Float4x3,
     HLSLBaseType_Float4x2,
-    HLSLBaseType_Half,
-    HLSLBaseType_Half2,
-    HLSLBaseType_Half3,
-    HLSLBaseType_Half4,
-	HLSLBaseType_Half2x2,
-    HLSLBaseType_Half3x3,
-    HLSLBaseType_Half4x4,
-    HLSLBaseType_Half4x3,
-    HLSLBaseType_Half4x2,
+
     HLSLBaseType_Bool,
     HLSLBaseType_FirstInteger = HLSLBaseType_Bool,
 	HLSLBaseType_Bool2,
@@ -83,6 +88,14 @@ enum HLSLBaseType
     HLSLBaseType_Uint2,
     HLSLBaseType_Uint3,
     HLSLBaseType_Uint4,
+    /*HLSLBaseType_Short,   // @@ Separate dimension from Base type, this is getting out of control.
+    HLSLBaseType_Short2,
+    HLSLBaseType_Short3,
+    HLSLBaseType_Short4,
+    HLSLBaseType_Ushort,
+    HLSLBaseType_Ushort2,
+    HLSLBaseType_Ushort3,
+    HLSLBaseType_Ushort4,*/
     HLSLBaseType_LastInteger = HLSLBaseType_Uint4,
     HLSLBaseType_LastNumeric = HLSLBaseType_Uint4,
     HLSLBaseType_Texture,
@@ -94,10 +107,85 @@ enum HLSLBaseType
     HLSLBaseType_Sampler2DMS,
     HLSLBaseType_Sampler2DArray,
     HLSLBaseType_UserDefined,       // struct
+    HLSLBaseType_Expression,        // type argument for defined() sizeof() and typeof().
+    HLSLBaseType_Auto,
     
     HLSLBaseType_Count,
     HLSLBaseType_NumericCount = HLSLBaseType_LastNumeric - HLSLBaseType_FirstNumeric + 1
 };
+    
+
+
+enum NumericType
+{
+    NumericType_Float,
+    NumericType_Bool,
+    NumericType_Int,
+    NumericType_Uint,
+    NumericType_Count,
+    NumericType_NaN,
+};
+
+
+struct BaseTypeDescription
+{
+    const char*     typeName;
+    NumericType     numericType;
+    int             numComponents;
+    int             numDimensions;
+    int             height;
+    int             binaryOpRank;
+};
+
+const BaseTypeDescription baseTypeDescriptions[HLSLBaseType_Count] =
+    {
+        { "unknown type",       NumericType_NaN,        0, 0, 0, -1 },      // HLSLBaseType_Unknown
+        { "void",               NumericType_NaN,        0, 0, 0, -1 },      // HLSLBaseType_Void
+        { "float",              NumericType_Float,      1, 0, 1,  0 },      // HLSLBaseType_Float
+        { "float2",             NumericType_Float,      2, 1, 1,  0 },      // HLSLBaseType_Float2
+        { "float3",             NumericType_Float,      3, 1, 1,  0 },      // HLSLBaseType_Float3
+        { "float4",             NumericType_Float,      4, 1, 1,  0 },      // HLSLBaseType_Float4
+
+        { "float2x4",			NumericType_Float,		2, 2, 4,  0 },		// HLSLBaseType_Float2x4
+        { "float2x3",			NumericType_Float,		2, 2, 3,  0 },		// HLSLBaseType_Float2x3
+        { "float2x2",			NumericType_Float,		2, 2, 2,  0 },		// HLSLBaseType_Float2x2
+
+        { "float3x4",           NumericType_Float,      3, 2, 4,  0 },      // HLSLBaseType_Float3x4
+        { "float3x3",           NumericType_Float,      3, 2, 3,  0 },      // HLSLBaseType_Float3x3
+        { "float3x2",           NumericType_Float,      3, 2, 2,  0 },      // HLSLBaseType_Float3x2
+
+        { "float4x4",           NumericType_Float,      4, 2, 4,  0 },      // HLSLBaseType_Float4x4
+        { "float4x3",           NumericType_Float,      4, 2, 3,  0 },      // HLSLBaseType_Float4x3
+        { "float4x2",           NumericType_Float,      4, 2, 2,  0 },      // HLSLBaseType_Float4x2
+
+        { "bool",               NumericType_Bool,       1, 0, 1,  4 },      // HLSLBaseType_Bool
+        { "bool2",				NumericType_Bool,		2, 1, 1,  4 },      // HLSLBaseType_Bool2
+        { "bool3",				NumericType_Bool,		3, 1, 1,  4 },      // HLSLBaseType_Bool3
+        { "bool4",				NumericType_Bool,		4, 1, 1,  4 },      // HLSLBaseType_Bool4
+
+        { "int",                NumericType_Int,        1, 0, 1,  3 },      // HLSLBaseType_Int
+        { "int2",               NumericType_Int,        2, 1, 1,  3 },      // HLSLBaseType_Int2
+        { "int3",               NumericType_Int,        3, 1, 1,  3 },      // HLSLBaseType_Int3
+        { "int4",               NumericType_Int,        4, 1, 1,  3 },      // HLSLBaseType_Int4
+
+        { "uint",               NumericType_Uint,       1, 0, 1,  2 },      // HLSLBaseType_Uint
+        { "uint2",              NumericType_Uint,       2, 1, 1,  2 },      // HLSLBaseType_Uint2
+        { "uint3",              NumericType_Uint,       3, 1, 1,  2 },      // HLSLBaseType_Uint3
+        { "uint4",              NumericType_Uint,       4, 1, 1,  2 },      // HLSLBaseType_Uint4
+
+        { "texture",            NumericType_NaN,        1, 0, 0, -1 },      // HLSLBaseType_Texture
+        { "sampler",            NumericType_NaN,        1, 0, 0, -1 },      // HLSLBaseType_Sampler
+        { "sampler2D",          NumericType_NaN,        1, 0, 0, -1 },      // HLSLBaseType_Sampler2D
+        { "sampler3D",          NumericType_NaN,        1, 0, 0, -1 },      // HLSLBaseType_Sampler3D
+        { "samplerCUBE",        NumericType_NaN,        1, 0, 0, -1 },      // HLSLBaseType_SamplerCube
+        { "sampler2DShadow",    NumericType_NaN,        1, 0, 0, -1 },      // HLSLBaseType_Sampler2DShadow
+        { "sampler2DMS",        NumericType_NaN,        1, 0, 0, -1 },      // HLSLBaseType_Sampler2DMS
+        { "sampler2DArray",     NumericType_NaN,        1, 0, 0, -1 },      // HLSLBaseType_Sampler2DArray
+        { "user defined",       NumericType_NaN,        1, 0, 0, -1 },      // HLSLBaseType_UserDefined
+        { "expression",         NumericType_NaN,        1, 0, 0, -1 }       // HLSLBaseType_Expression
+    };
+
+extern const HLSLBaseType ScalarBaseType[HLSLBaseType_Count];
 
 inline bool IsSamplerType(HLSLBaseType baseType)
 {
@@ -112,27 +200,24 @@ inline bool IsSamplerType(HLSLBaseType baseType)
 
 inline bool IsMatrixType(HLSLBaseType baseType)
 {
-    return baseType == HLSLBaseType_Float3x3 || baseType == HLSLBaseType_Float4x4 || baseType == HLSLBaseType_Float4x3 || baseType == HLSLBaseType_Float4x2 ||
-        baseType == HLSLBaseType_Half3x3 || baseType == HLSLBaseType_Half4x4 || baseType == HLSLBaseType_Half4x3 || baseType == HLSLBaseType_Half4x2;
+    return baseType == HLSLBaseType_Float2x4 || baseType == HLSLBaseType_Float2x3 || baseType == HLSLBaseType_Float2x2 ||
+           baseType == HLSLBaseType_Float3x4 || baseType == HLSLBaseType_Float3x3 || baseType == HLSLBaseType_Float3x2 ||
+           baseType == HLSLBaseType_Float4x4 || baseType == HLSLBaseType_Float4x3 || baseType == HLSLBaseType_Float4x2;
 }
 
-inline bool isScalarType( HLSLBaseType baseType )
+inline bool IsScalarType( HLSLBaseType baseType )
 {
 	return  baseType == HLSLBaseType_Float ||
-			baseType == HLSLBaseType_Half ||
 			baseType == HLSLBaseType_Bool ||
 			baseType == HLSLBaseType_Int ||
 			baseType == HLSLBaseType_Uint;
 }
 
-inline bool isVectorType( HLSLBaseType baseType )
+inline bool IsVectorType( HLSLBaseType baseType )
 {
 	return  baseType == HLSLBaseType_Float2 ||
 		baseType == HLSLBaseType_Float3 ||
 		baseType == HLSLBaseType_Float4 ||
-		baseType == HLSLBaseType_Half2 ||
-		baseType == HLSLBaseType_Half3 ||
-		baseType == HLSLBaseType_Half4 ||
 		baseType == HLSLBaseType_Bool2 ||
 		baseType == HLSLBaseType_Bool3 ||
 		baseType == HLSLBaseType_Bool4 ||
@@ -153,6 +238,7 @@ enum HLSLBinaryOp
     HLSLBinaryOp_Sub,
     HLSLBinaryOp_Mul,
     HLSLBinaryOp_Div,
+    HLSLBinaryOp_Mod,
     HLSLBinaryOp_Less,
     HLSLBinaryOp_Greater,
     HLSLBinaryOp_LessEqual,
@@ -169,7 +255,7 @@ enum HLSLBinaryOp
     HLSLBinaryOp_DivAssign,
 };
 
-inline bool isCompareOp( HLSLBinaryOp op )
+inline bool IsCompareOp( HLSLBinaryOp op )
 {
 	return op == HLSLBinaryOp_Less ||
 		op == HLSLBinaryOp_Greater ||
@@ -179,6 +265,31 @@ inline bool isCompareOp( HLSLBinaryOp op )
 		op == HLSLBinaryOp_NotEqual;
 }
 
+inline bool IsArithmeticOp( HLSLBinaryOp op )
+{
+    return op == HLSLBinaryOp_Add ||
+        op == HLSLBinaryOp_Sub ||
+        op == HLSLBinaryOp_Mul ||
+        op == HLSLBinaryOp_Div ||
+        op == HLSLBinaryOp_Mod;
+}
+
+inline bool IsLogicOp( HLSLBinaryOp op )
+{
+    return op == HLSLBinaryOp_And ||
+        op == HLSLBinaryOp_Or;
+}
+
+inline bool IsAssignOp( HLSLBinaryOp op )
+{
+    return op == HLSLBinaryOp_Assign ||
+        op == HLSLBinaryOp_AddAssign ||
+        op == HLSLBinaryOp_SubAssign ||
+        op == HLSLBinaryOp_MulAssign ||
+        op == HLSLBinaryOp_DivAssign;
+}
+
+    
 enum HLSLUnaryOp
 {
     HLSLUnaryOp_Negative,       // -x
@@ -206,7 +317,7 @@ enum HLSLTypeFlags
     HLSLTypeFlag_None = 0,
     HLSLTypeFlag_Const = 0x01,
     HLSLTypeFlag_Static = 0x02,
-    //HLSLTypeFlag_Uniform = 0x04,
+    HLSLTypeFlag_Uniform = 0x04,
     //HLSLTypeFlag_Extern = 0x10,
     //HLSLTypeFlag_Volatile = 0x20,
     //HLSLTypeFlag_Shared = 0x40,
@@ -223,7 +334,7 @@ enum HLSLTypeFlags
     HLSLTypeFlag_Sample = 0x100000,
 
     // Misc.
-    //HLSLTypeFlag_Swizzle_BGRA = 0x200000,
+    HLSLTypeFlag_NoPromote = 0x200000,
 };
 
 enum HLSLAttributeType
@@ -232,6 +343,7 @@ enum HLSLAttributeType
     HLSLAttributeType_Unroll,
     HLSLAttributeType_Branch,
     HLSLAttributeType_Flatten,
+    HLSLAttributeType_NoFastMath,
 };
 
 enum HLSLAddressSpace
@@ -269,6 +381,7 @@ struct HLSLType
     explicit HLSLType(HLSLBaseType _baseType = HLSLBaseType_Unknown)
     { 
         baseType    = _baseType;
+        samplerType = HLSLBaseType_Float;
         typeName    = NULL;
         array       = false;
         arraySize   = NULL;
@@ -276,6 +389,7 @@ struct HLSLType
         addressSpace = HLSLAddressSpace_Undefined;
     }
     HLSLBaseType        baseType;
+    HLSLBaseType        samplerType;    // Half or Float
     const char*         typeName;       // For user defined types.
     bool                array;
     HLSLExpression*     arraySize;
@@ -288,14 +402,14 @@ inline bool IsSamplerType(const HLSLType & type)
     return IsSamplerType(type.baseType);
 }
 
-inline bool isScalarType(const HLSLType & type)
+inline bool IsScalarType(const HLSLType & type)
 {
-	return isScalarType(type.baseType);
+	return IsScalarType(type.baseType);
 }
 
-inline bool isVectorType(const HLSLType & type)
+inline bool IsVectorType(const HLSLType & type)
 {
-	return isVectorType(type.baseType);
+	return IsVectorType(type.baseType);
 }
 
 
@@ -421,6 +535,7 @@ struct HLSLFunction : public HLSLStatement
         statement       = NULL;
         argument        = NULL;
         numArguments    = 0;
+        numOutputArguments = 0;
         forward         = NULL;
     }
     const char*         name;
@@ -428,6 +543,7 @@ struct HLSLFunction : public HLSLStatement
     const char*         semantic;
     const char*         sv_semantic;
     int                 numArguments;
+    int                 numOutputArguments;     // Includes out and inout arguments.
     HLSLArgument*       argument;
     HLSLStatement*      statement;
     HLSLFunction*       forward; // Which HLSLFunction this one forward-declares
@@ -455,6 +571,24 @@ struct HLSLArgument : public HLSLNode
     HLSLExpression*         defaultValue;
     HLSLArgument*           nextArgument;
     bool                    hidden;
+};
+
+/** Macro declaration */
+struct HLSLMacro : public HLSLStatement
+{
+    static const HLSLNodeType s_type = HLSLNodeType_Macro;
+    HLSLMacro()
+    {
+        name            = NULL;
+        argument        = NULL;
+        numArguments    = 0;
+        macroAliased    = NULL;
+    }
+    const char*         name;
+    HLSLArgument*       argument;
+    int                 numArguments;
+    std::string         value;
+    HLSLMacro*          macroAliased;
 };
 
 /** A expression which forms a complete statement. */
@@ -501,10 +635,12 @@ struct HLSLIfStatement : public HLSLStatement
         condition     = NULL;
         statement     = NULL;
         elseStatement = NULL;
+        isStatic      = false;
     }
     HLSLExpression*     condition;
     HLSLStatement*      statement;
     HLSLStatement*      elseStatement;
+    bool                isStatic;
 };
 
 struct HLSLForStatement : public HLSLStatement
@@ -518,8 +654,21 @@ struct HLSLForStatement : public HLSLStatement
         statement = NULL;
     }
     HLSLDeclaration*    initialization;
+    HLSLExpression*     initializationWithoutType;
     HLSLExpression*     condition;
     HLSLExpression*     increment;
+    HLSLStatement*      statement;
+};
+
+struct HLSLWhileStatement : public HLSLStatement
+{
+    static const HLSLNodeType s_type = HLSLNodeType_WhileStatement;
+    HLSLWhileStatement()
+    {
+        condition = NULL;
+        statement = NULL;
+    }
+    HLSLExpression*     condition;
     HLSLStatement*      statement;
 };
 
@@ -773,6 +922,31 @@ struct HLSLStage : public HLSLStatement
     HLSLDeclaration*        outputs;
 };
 
+struct matrixCtor {
+    HLSLBaseType matrixType;
+    std::vector<HLSLBaseType> argumentTypes;
+
+    bool operator==(const matrixCtor & other) const
+    {
+        return  matrixType == other.matrixType &&
+                argumentTypes == other.argumentTypes;
+    }
+
+    bool operator<(const matrixCtor & other) const
+    {
+        if (matrixType < other.matrixType)
+        {
+            return true;
+        }
+        else if (matrixType > other.matrixType)
+        {
+            return false;
+        }
+
+        return argumentTypes < other.argumentTypes;
+    }
+};
+
 
 /**
  * Abstract syntax tree for parsed HLSL code.
@@ -819,6 +993,8 @@ public:
     int GetExpressionValue(HLSLExpression * expression, float values[4]);
 
     bool NeedsFunction(const char * name);
+    bool ReplaceUniformsAssignements();
+    void EnumerateMatrixCtorsNeeded(std::vector<matrixCtor> & matrixCtors);
 
 private:
 
@@ -871,6 +1047,7 @@ public:
     virtual void VisitContinueStatement(HLSLContinueStatement * node);
     virtual void VisitIfStatement(HLSLIfStatement * node);
     virtual void VisitForStatement(HLSLForStatement * node);
+    virtual void VisitWhileStatement(HLSLWhileStatement * node);
     virtual void VisitBlockStatement(HLSLBlockStatement * node);
     virtual void VisitUnaryExpression(HLSLUnaryExpression * node);
     virtual void VisitBinaryExpression(HLSLBinaryExpression * node);
@@ -886,6 +1063,8 @@ public:
     virtual void VisitSamplerState(HLSLSamplerState * node);
     virtual void VisitPass(HLSLPass * node);
     virtual void VisitTechnique(HLSLTechnique * node);
+    virtual void VisitPipeline(HLSLPipeline * node);
+
 
     virtual void VisitFunctions(HLSLRoot * root);
     virtual void VisitParameters(HLSLRoot * root);
@@ -902,6 +1081,10 @@ extern void SortTree(HLSLTree* tree);
 extern void GroupParameters(HLSLTree* tree);
 extern void HideUnusedArguments(HLSLFunction * function);
 extern bool EmulateAlphaTest(HLSLTree* tree, const char* entryName, float alphaRef = 0.5f);
+extern void FlattenExpressions(HLSLTree* tree);
+
+extern matrixCtor matrixCtorBuilder(HLSLType type, HLSLExpression *arguments);
+
 
 } // M4
 
