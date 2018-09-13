@@ -3358,7 +3358,7 @@ bool HLSLParser::ParsePreprocessorDefine()
         // Macro with arguments
         if (Accept('('))
         {
-            uint numArguments = 0;
+            int numArguments = 0;
             HLSLArgument* lastArgument = NULL;
 
             while (!Accept(')'))
